@@ -14,6 +14,10 @@ type MCPTarget struct {
 	// absolute URL the engine resolved.
 	ServerURL string
 	GitToken  string
+	// ExtraCredentials carries the responsible user's platform-managed
+	// credentials (RunCredentials.Extra) for MCP servers authenticated with
+	// AuthType "credential".
+	ExtraCredentials map[string]string
 	// RequireCredentials fails when a credential-authenticated MCP has no
 	// token. Agent invocations require it; scripts and gates bind
 	// opportunistically.
@@ -36,6 +40,10 @@ func PrepareMCPServers(assets domain.AgentAssetBundle, target MCPTarget) (domain
 				warnings = append(warnings, "Git SSH 仓库可直接推送分支；未配置 GitHub Token，已跳过 "+server.ID)
 				continue
 			}
+			if strings.EqualFold(strings.TrimSpace(server.AuthType), MCPAuthCredential) && strings.TrimSpace(target.ExtraCredentials[server.CredentialKind]) == "" {
+				warnings = append(warnings, "Git SSH 仓库可直接推送分支；未配置所需凭证，已跳过 "+server.ID)
+				continue
+			}
 			assets.MCPServers = append(assets.MCPServers, server)
 		}
 	}
@@ -43,6 +51,11 @@ func PrepareMCPServers(assets domain.AgentAssetBundle, target MCPTarget) (domain
 	assets, githubErr = BindGitHubMCPHeaders(assets, target.GitToken, target.RequireCredentials)
 	if githubErr != nil {
 		return assets, nil, githubErr
+	}
+	var credErr error
+	assets, credErr = BindCredentialMCPHeaders(assets, target.ExtraCredentials)
+	if credErr != nil {
+		return assets, nil, credErr
 	}
 	if base := strings.TrimRight(strings.TrimSpace(target.ServerURL), "/"); base != "" {
 		assets.MCPServers = rebasePlatformMCP(assets.MCPServers, base)
